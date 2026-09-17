@@ -1,69 +1,85 @@
 # kdl
 
-Lexer, parser, AST y conversión a datos planos para
-[KDL v2.0.0](https://kdl.dev/spec/) en Racket puro, usando sólo bibliotecas
-estándar (`parser-tools/lex`, `racket/match`, `racket/contract`). Sin
-dependencias externas ni herramientas de línea de comandos.
+**English** · [Español](README.es.md)
 
-Pasa los **338 casos** de la suite oficial de conformidad de
-[kdl-org/kdl](https://github.com/kdl-org/kdl/tree/main/tests/test_cases): los
-243 documentos válidos producen un AST idéntico al de su forma canónica, y los
-95 inválidos son rechazados.
+A lexer, parser, AST and plain-data converter for
+[KDL v2.0.0](https://kdl.dev/spec/) in pure Racket, using only the standard
+libraries (`parser-tools/lex`, `racket/match`, `racket/contract`). No external
+dependencies and no shelling out to command-line tools.
 
-## Dos representaciones
+It passes all **338 cases** of the
+[official KDL conformance suite](https://github.com/kdl-org/kdl/tree/main/tests/test_cases):
+each of the 243 valid documents parses to an AST equal to the one produced by
+its canonical form, and all 95 invalid documents are rejected.
 
-**AST** — precisa, con structs y contratos:
+## Install
+
+```
+raco pkg install https://github.com/javiervivanco/racket-kdl.git
+```
+
+## Two representations
+
+**AST** — precise, with structs and contracts:
 
 ```racket
 (require kdl)
 
-(parse-kdl "servidor puerto=8080 { ruta \"/api\" }")
-(parse-kdl-node "paquete nombre=\"kdl\"")   ; atajo para un solo nodo
+(parse-kdl "server port=8080 { route \"/api\" }")
+(parse-kdl-node "package name=\"kdl\"")   ; shortcut for a single node
 ```
 
-**kexpr** — datos planos, al estilo `jsexpr`, para leer configuración:
+**kexpr** — plain data, in the spirit of `jsexpr`, for reading configuration:
 
 ```racket
-(kdl->kexpr "servidor puerto=8080 tls=#true")
+(kdl->kexpr "server port=8080 tls=#true")
 ```
 ```racket
-(list (hasheq 'name 'servidor
+(list (hasheq 'name 'server
               'args '()
-              'props (hasheq 'puerto 8080 'tls #t)
+              'props (hasheq 'port 8080 'tls #t)
               'children '()))
 ```
 ```racket
-(kexpr->kdl (hasheq 'name 'servidor 'props (hasheq 'puerto 8080)))
-;; => "servidor puerto=8080"
+(kexpr->kdl (hasheq 'name 'server 'props (hasheq 'port 8080)))
+;; => "server port=8080"
 ```
 
-Un documento es una lista de nodos; cada nodo es un hash con `'name`, `'args`,
-`'props` y `'children`, más `'type` si lleva anotación. Los nombres —del nodo,
-de las propiedades y de las anotaciones— son símbolos, como las claves de un
-`jsexpr`; los strings quedan para los datos.
+A document is a list of nodes; each node is a hash with `'name`, `'args`,
+`'props` and `'children`, plus `'type` when it carries an annotation. Names —
+of the node, of its properties, of a type annotation — are **symbols**, the way
+the keys of a `jsexpr` are; strings are left for data.
 
-Un valor es un string, un número, un booleano o `'null`; si tiene anotación de
-tipo se envuelve en `(hasheq 'type ... 'value ...)`.
+A value is a string, a number, a boolean or `'null`. A value that carries a
+type annotation is wrapped in `(hasheq 'type ... 'value ...)`, which is the
+only place the annotation could go without losing it:
 
-Una palabra sin comillas y un string entrecomillado son el **mismo** valor para
-KDL —`n foo`, `n "foo"` y `n #"foo"#` significan lo mismo—, así que esa
-distinción no sobrevive al kexpr.
+```racket
+(kdl->kexpr "created (date-time)\"2024-01-15T10:00:00Z\" size (u8)255")
+;; args: (list (hasheq 'type 'date-time 'value "2024-01-15T10:00:00Z")
+;;             (hasheq 'type 'u8 'value 255))
+```
 
-La conversión no pierde nada: los tipos nativos de KDL y las anotaciones
-sobreviven la ida y la vuelta.
+A bare word and a quoted string are the **same** value in KDL — `n foo`,
+`n "foo"` and `n #"foo"#` all mean the same thing — so that distinction does
+not survive into a kexpr.
+
+The conversion is lossless: KDL's native types and its type annotations both
+survive a round trip.
 
 ```racket
 (equal? (kdl->kexpr doc) (kdl->kexpr (kexpr->kdl (kdl->kexpr doc))))  ; => #t
 ```
 
-`kexpr->kdl` cita los strings sólo cuando hace falta, escapa lo que no puede ir
-literal, y ordena las propiedades por clave para que la salida sea reproducible.
+`kexpr->kdl` quotes strings only when it has to, escapes what cannot appear
+literally, and sorts properties by key so the output is reproducible. Names may
+be given as strings as well as symbols: reading is strict, writing is lenient.
 
 ## AST
 
-Todos los structs son `#:transparent`, así que `equal?` compara por contenido.
+Every struct is `#:transparent`, so `equal?` compares by content.
 
-| struct | campos |
+| struct | fields |
 |---|---|
 | `kdl-document` | `nodes` |
 | `kdl-node` | `type` `name` `args` `props` `children` |
@@ -71,56 +87,50 @@ Todos los structs son `#:transparent`, así que `equal?` compara por contenido.
 | `kdl-property` | `name` `value` |
 | `kdl-value` | `type` `datum` |
 
-Los contratos se aplican en la frontera del módulo: un árbol mal formado se
-rechaza al construirlo, incluida la unicidad de las claves de propiedad.
+Contracts are enforced at the module boundary: a malformed tree is rejected
+where it is built, including the uniqueness of property keys within a node.
 
-Utilidades: `(kdl-node-ref node nombre [default])` y `(kdl-node-arg-data node)`.
+Accessors: `(kdl-node-ref node name [default])` and `(kdl-node-arg-data node)`.
 
-## Cobertura de la especificación
+## What is supported
 
-- **Valores**: identificadores sin comillas, strings con comillas, raw strings
-  con `#` arbitrarios, multi-line strings (con y sin comillas) y su regla de
-  sangrado, números decimales/hex/octal/binario con `_` y exponente,
-  `#true` `#false` `#null` `#inf` `#-inf` `#nan`.
-- **Escapes**: `\n \r \t \\ \" \b \f \s`, `\u{...}` (1 a 6 dígitos, validando
-  Unicode Scalar Value) y escapes de whitespace.
-- **Anotaciones de tipo** sobre nodos, argumentos y propiedades.
-- **Comentarios**: `//`, `/* */` anidados y el slashdash `/-` sobre argumentos,
-  propiedades, bloques de hijos y nodos completos.
-- **Continuación de línea** con `\`, incluso seguida de un comentario.
-- **Code points prohibidos** como literales (controles, DELETE, controles de
-  dirección bidireccional, BOM fuera del inicio).
-- **Propiedades duplicadas**: gana la de más a la derecha; los argumentos
-  preservan su orden.
+- **Values**: bare identifiers, quoted strings, raw strings with any number of
+  `#` delimiters, multi-line strings in both flavours and their indentation
+  rule, numbers in decimal, hex, octal and binary with `_` separators and
+  exponents, and `#true` `#false` `#null` `#inf` `#-inf` `#nan`.
+- **Escapes**: `\n \r \t \\ \" \b \f \s`, `\u{...}` (one to six digits,
+  validated to be a Unicode scalar value) and whitespace escapes.
+- **Type annotations** on nodes, arguments and properties.
+- **Comments**: `//`, `/* */` which nests, and the slashdash `/-` over an
+  argument, a property, a block of children or a whole node.
+- **Line continuations** with `\`, even followed by a comment.
+- **Disallowed literal code points** (controls, DELETE, bidirectional
+  direction-control characters, BOM anywhere but the start).
+- **Duplicate properties**: the rightmost occurrence wins; positional arguments
+  keep their order.
 
-## Errores
+## Errors
 
-Todo error de sintaxis levanta `exn:fail:kdl`, con `line` y `col`:
+Every syntax error raises `exn:fail:kdl`, which carries `line` and `col`:
 
 ```racket
-> (parse-kdl "nodo true")
+> (parse-kdl "node true")
 kdl: `true` es palabra reservada; en KDL v2 se escribe `#true` (línea 1, columna 6)
 ```
 
-## Módulos
+## Modules
 
-| módulo | contenido |
+| module | contents |
 |---|---|
-| `kdl` | la API pública; reexporta todos los demás |
-| `kdl/ast` | structs del AST y sus contratos |
-| `kdl/lexer` | lexer y `exn:fail:kdl` |
+| `kdl` | the public API; re-exports all of the others |
+| `kdl/ast` | the AST structs and their contracts |
+| `kdl/lexer` | the lexer and `exn:fail:kdl` |
 | `kdl/parser` | `parse-kdl` / `parse-kdl-node` |
 | `kdl/kexpr` | `kdl->kexpr` / `kexpr->kdl` |
 
-## Instalación
+## Documentation
 
-```
-raco pkg install kdl
-```
-
-## Documentación
-
-Referencia en Scribble, en inglés (`scribblings/kdl.scrbl`):
+Reference documentation in Scribble (`scribblings/kdl.scrbl`):
 
 ```
 raco docs kdl
@@ -132,8 +142,12 @@ raco docs kdl
 raco test tests/
 ```
 
-- `tests/parser.rkt` — lexer, parser, AST y contratos, incluidos los casos
-  derivados de la suite oficial de conformidad.
-- `tests/kexpr.rkt` — la conversión en ambos sentidos.
-- `tests/docs.rkt` — construye el documento Scribble, lo que evalúa todos sus
-  ejemplos: si uno deja de dar el resultado documentado, el test falla.
+- `tests/parser.rkt` — lexer, parser, AST and contracts, including the cases
+  derived from the official conformance suite.
+- `tests/kexpr.rkt` — the conversion in both directions.
+- `tests/docs.rkt` — builds the Scribble document, which evaluates all of its
+  examples: if one stops producing the documented result, the test fails.
+
+## License
+
+MIT
