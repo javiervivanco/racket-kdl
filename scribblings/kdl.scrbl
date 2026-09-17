@@ -143,14 +143,26 @@ only hashes and lists to walk with @racket[hash-ref] and @racket[for].
 A document is a list of nodes, and each node is a hash:
 
 @racketblock[
-knode  = (hasheq 'name     string?
-                 'type     string?      (code:comment "only when annotated")
+knode  = (hasheq 'name     symbol?
+                 'type     symbol?      (code:comment "only when annotated")
                  'args     (listof kvalue)
                  'props    (hasheq symbol? kvalue)
                  'children (listof knode))
 
 kvalue = string? #,(elem "|") number? #,(elem "|") boolean? #,(elem "|") 'null
-       #,(elem "|") (hasheq 'type string? 'value kvalue)
+       #,(elem "|") (hasheq 'type symbol? 'value kvalue)
+]
+
+Names — of the node, of its properties, of a type annotation — are symbols,
+the way the keys of a @racket[jsexpr] are; strings are left for data.
+
+Note that a bare word and a quoted string are the @emph{same} value in KDL:
+@tt{node foo}, @tt{node "foo"} and @tt{node #"foo"#} all mean the same thing,
+and the canonical form of a document drops the quotes where they are not
+needed. So that distinction does not survive into a kexpr, and should not.
+
+@examples[#:eval ev
+  (equal? (kdl->kexpr "n foo") (kdl->kexpr "n \"foo\""))
 ]
 
 The conversion loses nothing: KDL's native types and its type annotations both
@@ -164,6 +176,10 @@ survive a round trip.
   @racket['props] and @racket['children], so they can be read without
   supplying a default; @racket['type] appears only on annotated nodes.
 
+  A value that carries a type annotation is wrapped in a hash, which is the
+  only place the annotation could go without losing it; a plain value is the
+  datum itself.
+
   @examples[#:eval ev
     (kdl->kexpr "server port=8080 tls=#true")
     (kdl->kexpr "a; b")
@@ -174,6 +190,8 @@ survive a round trip.
 @defproc[(kexpr->kdl [k (or/c hash? (listof hash?))]) string?]{
   Renders a kexpr back to KDL text. A single node hash is accepted in place of
   a one-node document, and a node may leave out the keys it does not need.
+  Names may be given as strings as well as symbols: reading is strict, writing
+  is lenient.
 
   Strings are quoted only when they have to be — when they are not a legal bare
   identifier — and escapes are inserted where a literal character would be
@@ -181,11 +199,11 @@ survive a round trip.
   and the output should be reproducible.
 
   @examples[#:eval ev
-    (display (kexpr->kdl (hasheq 'name "server"
+    (display (kexpr->kdl (hasheq 'name 'server
                                  'props (hasheq 'port 8080))))
-    (display (kexpr->kdl (hasheq 'name "a"
-                                 'children (list (hasheq 'name "b")))))
-    (display (kexpr->kdl (hasheq 'name "n" 'args (list "needs quoting"))))
+    (display (kexpr->kdl (hasheq 'name 'a
+                                 'children (list (hasheq 'name 'b)))))
+    (display (kexpr->kdl (hasheq 'name 'n 'args (list "needs quoting"))))
   ]
 
   Raises @racket[exn:fail:kdl] if a node has no @racket['name], or if a value
@@ -193,7 +211,7 @@ survive a round trip.
 
   @examples[#:eval ev
     (eval:error (kexpr->kdl (hasheq 'args '(1))))
-    (eval:error (kexpr->kdl (hasheq 'name "n" 'args (list (list 1 2)))))
+    (eval:error (kexpr->kdl (hasheq 'name 'n 'args (list (list 1 2)))))
   ]
 }
 

@@ -5,14 +5,20 @@
 ;; structs ni contratos que respetar, pensados para recorrer con `hash-ref` y
 ;; `for`. Un documento es una lista de nodos, y cada nodo es un hash:
 ;;
-;;   knode  ::= (hasheq 'name     string?
-;;                      'type     string?          ; sólo si hay anotación
+;;   knode  ::= (hasheq 'name     symbol?
+;;                      'type     symbol?          ; sólo si hay anotación
 ;;                      'args     (listof kvalue)
 ;;                      'props    (hasheq symbol? kvalue)
 ;;                      'children (listof knode))
 ;;
 ;;   kvalue ::= string? | number? | boolean? | 'null
-;;            | (hasheq 'type string? 'value kvalue)   ; valor anotado
+;;            | (hasheq 'type symbol? 'value kvalue)   ; valor anotado
+;;
+;; Los nombres —del nodo, de las propiedades y de las anotaciones de tipo— son
+;; símbolos, igual que las claves de un jsexpr; los strings quedan para los
+;; datos. Nótese que un valor sin comillas y uno entrecomillado son el mismo
+;; string: KDL los considera equivalentes, así que la distinción no sobrevive
+;; —ni debe— hasta el kexpr.
 ;;
 ;; La conversión no pierde nada: los tipos nativos de KDL (números, booleanos,
 ;; null) y las anotaciones de tipo sobreviven el viaje de ida y vuelta.
@@ -40,7 +46,7 @@
 
 (define (node->kexpr n)
   (define base
-    (hasheq 'name     (kdl-node-name n)
+    (hasheq 'name     (string->symbol (kdl-node-name n))
             'args     (map (λ (a) (value->kdatum (kdl-argument-value a)))
                            (kdl-node-args n))
             'props    (for/hasheq ([p (in-list (kdl-node-props n))])
@@ -48,7 +54,7 @@
                                 (value->kdatum (kdl-property-value p))))
             'children (map node->kexpr (kdl-node-children n))))
   (if (kdl-node-type n)
-      (hash-set base 'type (kdl-node-type n))
+      (hash-set base 'type (string->symbol (kdl-node-type n)))
       base))
 
 ;; Un valor sin anotación es el dato pelado; con anotación se envuelve, que es
@@ -56,7 +62,7 @@
 (define (value->kdatum v)
   (define d (kdl-value-datum v))
   (if (kdl-value-type v)
-      (hasheq 'type (kdl-value-type v) 'value d)
+      (hasheq 'type (string->symbol (kdl-value-type v)) 'value d)
       d))
 
 ;; =========================================================== kexpr -> KDL
@@ -67,8 +73,8 @@
 
 (define (node->string n depth)
   (define pad (make-string (* 4 depth) #\space))
-  (define name (hash-ref n 'name (λ () (kexpr-error "un nodo necesita 'name"))))
-  (unless (string? name) (kexpr-error "'name debe ser un string: ~s" name))
+  (define name (name->string (hash-ref n 'name (λ () (kexpr-error "un nodo necesita 'name")))
+                             "'name"))
   (define parts
     (append
      (list (string-append (type-prefix (hash-ref n 'type #f)) (ident->string name)))
@@ -91,9 +97,14 @@
                      "\n" pad "}")))
 
 (define (type-prefix t)
-  (cond [(not t) ""]
-        [(string? t) (format "(~a)" (ident->string t))]
-        [else (kexpr-error "'type debe ser un string: ~s" t)]))
+  (if t (format "(~a)" (ident->string (name->string t "'type"))) ""))
+
+;; Un nombre se escribe como símbolo, pero también se acepta un string: al
+;; leer se es estricto, al escribir conviene ser tolerante.
+(define (name->string v what)
+  (cond [(symbol? v) (symbol->string v)]
+        [(string? v) v]
+        [else (kexpr-error "~a debe ser un símbolo o un string: ~s" what v)]))
 
 (define (kdatum->string d)
   (match d

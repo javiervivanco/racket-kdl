@@ -27,20 +27,27 @@ Pasa los **338 casos** de la suite oficial de conformidad de
 (kdl->kexpr "servidor puerto=8080 tls=#true")
 ```
 ```racket
-(list (hasheq 'name "servidor"
+(list (hasheq 'name 'servidor
               'args '()
               'props (hasheq 'puerto 8080 'tls #t)
               'children '()))
 ```
 ```racket
-(kexpr->kdl (hasheq 'name "servidor" 'props (hasheq 'puerto 8080)))
+(kexpr->kdl (hasheq 'name 'servidor 'props (hasheq 'puerto 8080)))
 ;; => "servidor puerto=8080"
 ```
 
 Un documento es una lista de nodos; cada nodo es un hash con `'name`, `'args`,
-`'props` y `'children`, más `'type` si lleva anotación. Un valor es un string,
-un número, un booleano o `'null`; si tiene anotación de tipo se envuelve en
-`(hasheq 'type ... 'value ...)`.
+`'props` y `'children`, más `'type` si lleva anotación. Los nombres —del nodo,
+de las propiedades y de las anotaciones— son símbolos, como las claves de un
+`jsexpr`; los strings quedan para los datos.
+
+Un valor es un string, un número, un booleano o `'null`; si tiene anotación de
+tipo se envuelve en `(hasheq 'type ... 'value ...)`.
+
+Una palabra sin comillas y un string entrecomillado son el **mismo** valor para
+KDL —`n foo`, `n "foo"` y `n #"foo"#` significan lo mismo—, así que esa
+distinción no sobrevive al kexpr.
 
 La conversión no pierde nada: los tipos nativos de KDL y las anotaciones
 sobreviven la ida y la vuelta.
